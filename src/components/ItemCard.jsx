@@ -121,6 +121,7 @@ export function ItemCard({
               id: item.id,
               name: item.name,
               category: item.assetType?.name || item.category || 'Accessory',
+              isOutfit: false,
               imageUrl,
             })
           }

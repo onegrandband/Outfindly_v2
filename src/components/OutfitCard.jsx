@@ -130,6 +130,7 @@ export function OutfitCard({
                 id: outfit.id,
                 name: outfit.name,
                 category: 'Outfit',
+                isOutfit: true,
                 imageUrl: imgSrc || outfit.imageUrl,
                 outfitId: outfit.id,
                 outfitName: outfit.name,

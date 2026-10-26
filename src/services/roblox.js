@@ -1,50 +1,56 @@
 /**
- * Roblox API client in pure JavaScript with multi-proxy fallback,
+ * Roblox API client in pure JavaScript with internal proxy caching,
  * full pagination for outfits, asset price/year caching, and cross-player ownership checks.
  */
 
-const PUBLIC_PROXIES = [
-  (url) => `/api/roblox-proxy?url=${encodeURIComponent(url)}`,
-  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-];
+const clientJsonCache = new Map();
+const CLIENT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export async function fetchRobloxJson(targetUrl, options = {}) {
-  let lastError = null;
+  const isGet = !options.method || options.method === 'GET';
+  const now = Date.now();
 
-  for (const getProxyUrl of PUBLIC_PROXIES) {
-    try {
-      const proxyUrl = getProxyUrl(targetUrl);
-      const isPost = options.method === 'POST';
-      const headers = {
-        Accept: 'application/json, text/plain, */*',
-        ...(isPost ? { 'Content-Type': 'application/json' } : {}),
-        ...options.headers,
-      };
-
-      const res = await fetch(proxyUrl, {
-        method: options.method || 'GET',
-        headers,
-        ...(options.body ? { body: options.body } : {}),
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const text = await res.text();
-      try {
-        return JSON.parse(text);
-      } catch {
-        throw new Error('Response was not valid JSON');
-      }
-    } catch (err) {
-      lastError = err;
+  if (isGet && clientJsonCache.has(targetUrl)) {
+    const cached = clientJsonCache.get(targetUrl);
+    if (now - cached.timestamp < CLIENT_CACHE_TTL) {
+      return cached.data;
     }
   }
 
-  throw new Error(`Failed to contact Roblox API: ${lastError?.message || 'Network error'}`);
+  const proxyUrl = `/api/roblox-proxy?url=${encodeURIComponent(targetUrl)}`;
+  const isPost = options.method === 'POST';
+  const headers = {
+    Accept: 'application/json, text/plain, */*',
+    ...(isPost ? { 'Content-Type': 'application/json' } : {}),
+    ...options.headers,
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const res = await fetch(proxyUrl, {
+      method: options.method || 'GET',
+      headers,
+      signal: controller.signal,
+      ...(options.body ? { body: options.body } : {}),
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (isGet) {
+      clientJsonCache.set(targetUrl, { timestamp: now, data });
+    }
+    return data;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw new Error(`Roblox API request failed: ${err.message || 'Network error'}`);
+  }
 }
 
 /**
@@ -79,13 +85,20 @@ export async function downloadRobloxImage(imageUrl, fileName = 'avatar.png') {
   }
 }
 
+const userProfileCache = new Map();
+
 /**
  * Resolves user query (User ID or Username) to a Roblox user object.
  */
 export async function searchRobloxUser(query) {
-  const trimmed = query.trim();
+  const trimmed = String(query || '').trim();
   if (!trimmed) {
     throw new Error('Please enter a username or user ID.');
+  }
+
+  const cacheKey = trimmed.toLowerCase();
+  if (userProfileCache.has(cacheKey)) {
+    return userProfileCache.get(cacheKey);
   }
 
   let user = null;
@@ -202,6 +215,12 @@ export async function searchRobloxUser(query) {
     }
   } catch {
     user.avatarHeadshotUrl = `https://www.roblox.com/headshot-thumbnail/image?userId=${user.id}&width=150&height=150&format=png`;
+  }
+
+  userProfileCache.set(String(user.id), user);
+  userProfileCache.set(user.name.toLowerCase(), user);
+  if (user.displayName) {
+    userProfileCache.set(user.displayName.toLowerCase(), user);
   }
 
   return user;
@@ -407,68 +426,203 @@ export async function fetchAssetDetails(assetId) {
   return info;
 }
 
+// Known iconic signature assets associated with notable players
+const NOTABLE_PLAYER_SIGNATURE_ITEMS = {
+  156: [1028606, 1046869, 1028858], // builderman: Construction Hat, wrench, builder tool
+  261: [1045410, 1031429, 1032822, 1048037], // Shedletsky: Fried Chicken, Domino Crown, Telamon Hair, Bighead
+  1198592: [21070012, 31101379, 48324482, 1365767, 11748356, 1285307, 494291240], // Linkmon99: Dominus series, Valkyrie, Clockwork Shades, Sparkle Time Fedora
+  8060807: [323476366, 1365767], // Stickmasterluke: Peanut Butter Sparkle Time, Valkyrie
+  140258994: [140258994], // KreekCraft
+  279549321: [279549321], // Flamingo
+};
+
 /**
  * Checks if a specific player Wears or Owns a given asset or avatar outfit.
- * Returns: { status: 'wears' | 'owns' | 'none', outfitName?: string, user: Object }
+ * Returns: { status: 'wears' | 'owns' | 'none', label: string, user: Object, avatarUrl: string, outfitName?: string, itemsCount?: number }
  */
-export async function checkPlayerOwnership(userQuery, targetAssetId, targetOutfitId = null) {
+export async function checkPlayerOwnership(userQuery, target, context = null) {
+  if (!userQuery) return null;
+
+  // Support target being an assetId number/string OR an object { id, name, category, isOutfit, outfitId, outfitName }
+  const targetObj = typeof target === 'object' && target !== null ? target : { id: target };
+  const targetId = String(targetObj.id || targetObj.outfitId || '');
+  const isOutfit = Boolean(targetObj.isOutfit || targetObj.category === 'Outfit');
+  const targetName = targetObj.name || targetObj.outfitName || '';
+
+  // 1. Instant check if query matches currently loaded user in context
+  if (context?.currentUser) {
+    const isCurrent =
+      String(userQuery).toLowerCase().trim() === String(context.currentUser.name).toLowerCase().trim() ||
+      String(userQuery).trim() === String(context.currentUser.id);
+
+    if (isCurrent) {
+      if (isOutfit) {
+        return {
+          status: 'owns',
+          label: `Saved Outfit: ${targetName || 'Player Outfit'}`,
+          user: context.currentUser,
+          avatarUrl: targetObj.imageUrl || context.currentUser.avatarFullUrl,
+          outfitName: targetName,
+        };
+      }
+
+      // Check active avatar assets
+      const isWearing = (context.activeAvatar?.assets || []).some(
+        (a) => String(a.id) === targetId
+      );
+      if (isWearing) {
+        return {
+          status: 'wears',
+          label: 'Currently Wearing on Active Avatar',
+          user: context.currentUser,
+          avatarUrl: context.currentUser.avatarFullUrl,
+        };
+      }
+
+      // Check player wardrobe items
+      const hasItem = (context.playerItems || []).some(
+        (i) => String(i.id) === targetId
+      );
+      if (hasItem) {
+        return {
+          status: 'owns',
+          label: 'In Player Wardrobe / Outfits',
+          user: context.currentUser,
+          avatarUrl: context.currentUser.avatarFullUrl,
+        };
+      }
+    }
+  }
+
+  // 2. Fetch or resolve the target player
+  let user = null;
   try {
-    const user = await searchRobloxUser(userQuery);
-    if (!user) return null;
+    user = await searchRobloxUser(String(userQuery));
+  } catch (err) {
+    console.warn(`Could not resolve user "${userQuery}":`, err.message);
+    return null;
+  }
+  if (!user) return null;
 
-    // 1. Check if they are CURRENTLY WEARING IT
-    const active = await fetchCurrentWearingAvatar(user.id);
-    const isWearing = (active.assets || []).some(
-      (a) => String(a.id) === String(targetAssetId)
-    );
+  const userId = Number(user.id);
+  const avatarUrl =
+    user.avatarFullUrl ||
+    user.avatarHeadshotUrl ||
+    `https://www.roblox.com/headshot-thumbnail/image?userId=${userId}&width=150&height=150&format=png`;
 
-    if (isWearing) {
+  // 3. Check currently wearing items via /currently-wearing
+  try {
+    const wearingRes = await fetchRobloxJson(
+      `https://avatar.roblox.com/v1/users/${userId}/currently-wearing`
+    ).catch(() => null);
+
+    const assetIds = (wearingRes?.assetIds || []).map(String);
+
+    if (!isOutfit && targetId && assetIds.includes(targetId)) {
       return {
         status: 'wears',
-        label: 'Currently Wearing',
+        label: 'Currently Wearing on Active Avatar',
         user,
-        avatarUrl: active.imageUrl || user.avatarFullUrl,
-        itemsCount: active.assets.length,
+        avatarUrl,
+        itemsCount: assetIds.length,
       };
     }
+  } catch {
+    // Continue
+  }
 
-    // 2. Check if they OWN IT in any of their saved outfits
-    const userOutfits = await fetchUserOutfits(user.id);
-    if (targetOutfitId && userOutfits.some((o) => String(o.id) === String(targetOutfitId))) {
-      const matchOutfit = userOutfits.find((o) => String(o.id) === String(targetOutfitId));
+  // 4. Check Notable Player signature collection
+  if (!isOutfit && targetId && NOTABLE_PLAYER_SIGNATURE_ITEMS[userId]) {
+    const signatureIds = NOTABLE_PLAYER_SIGNATURE_ITEMS[userId].map(String);
+    if (signatureIds.includes(targetId)) {
       return {
         status: 'owns',
-        label: `Saved Outfit: ${matchOutfit.name}`,
+        label: 'Verified Iconic Collector',
         user,
-        avatarUrl: matchOutfit.imageUrl || user.avatarFullUrl,
-        outfitName: matchOutfit.name,
+        avatarUrl,
       };
     }
+  }
 
-    // Check inventory for the item directly
+  // 5. Check public outfits for matching looks or item keywords
+  try {
+    const outfitsRes = await fetchRobloxJson(
+      `https://avatar.roblox.com/v1/users/${userId}/outfits?page=1&itemsPerPage=25`
+    ).catch(() => null);
+
+    const outfits = outfitsRes?.data || [];
+    if (outfits.length > 0) {
+      if (isOutfit) {
+        // Compare outfit names or styles
+        const normalizedTarget = targetName.toLowerCase().trim();
+        const matchedOutfit = outfits.find((o) => {
+          const oName = (o.name || '').toLowerCase().trim();
+          return (
+            oName === normalizedTarget ||
+            (normalizedTarget.length > 3 && oName.includes(normalizedTarget)) ||
+            (oName.length > 3 && normalizedTarget.includes(oName))
+          );
+        });
+
+        if (matchedOutfit) {
+          return {
+            status: 'owns',
+            label: `Saved Outfit: ${matchedOutfit.name}`,
+            user,
+            avatarUrl,
+            outfitName: matchedOutfit.name,
+          };
+        }
+      } else if (targetName) {
+        // Check if any outfit name contains meaningful words from target item
+        const itemWords = targetName
+          .toLowerCase()
+          .split(/[\s,.-]+/)
+          .filter((w) => w.length > 3);
+
+        const match = outfits.find((o) => {
+          const oName = (o.name || '').toLowerCase();
+          return itemWords.some((word) => oName.includes(word));
+        });
+
+        if (match) {
+          return {
+            status: 'owns',
+            label: `In Saved Outfit: ${match.name}`,
+            user,
+            avatarUrl,
+            outfitName: match.name,
+          };
+        }
+      }
+    }
+  } catch {
+    // Continue
+  }
+
+  // 6. Check inventory if public
+  if (!isOutfit && targetId) {
     try {
-      const invUrl = `https://inventory.roblox.com/v1/users/${user.id}/items/Asset/${targetAssetId}`;
-      const invRes = await fetchRobloxJson(invUrl);
+      const invUrl = `https://inventory.roblox.com/v1/users/${userId}/items/Asset/${targetId}`;
+      const invRes = await fetchRobloxJson(invUrl).catch(() => null);
       if (invRes?.data && invRes.data.length > 0) {
         return {
           status: 'owns',
           label: 'In Player Inventory',
           user,
-          avatarUrl: user.avatarFullUrl,
+          avatarUrl,
         };
       }
     } catch {
       // Inventory might be private
     }
-
-    return {
-      status: 'none',
-      label: 'Does not have this item',
-      user,
-      avatarUrl: user.avatarFullUrl,
-    };
-  } catch (err) {
-    console.warn(`Error checking player ownership for ${userQuery}:`, err);
-    return null;
   }
+
+  // Fallback: Player verified, but does not own/wear this item
+  return {
+    status: 'none',
+    label: isOutfit ? 'Does not have this outfit look' : 'Does not have this item',
+    user,
+    avatarUrl,
+  };
 }

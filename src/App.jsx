@@ -609,6 +609,8 @@ export default function App() {
           isOpen={Boolean(ownershipModalItem)}
           item={ownershipModalItem}
           currentUser={currentUser}
+          playerItems={playerItems}
+          outfits={outfits}
           onClose={() => setOwnershipModalItem(null)}
           onSelectPlayer={(playerName) => {
             setQuery(playerName);

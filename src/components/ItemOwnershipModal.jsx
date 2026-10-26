@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   XIcon,
   SearchIcon,
@@ -6,12 +6,9 @@ import {
   CopyIcon,
   ExternalLinkIcon,
   ShirtIcon,
-  SparklesIcon,
   CoinsIcon,
   CalendarIcon,
-  TagIcon,
   UsersIcon,
-  RefreshIcon,
   EyeIcon,
 } from './Icons.jsx';
 import {
@@ -19,7 +16,6 @@ import {
   checkPlayerOwnership,
   downloadRobloxImage,
 } from '../services/roblox.js';
-import { CustomDropdown } from './CustomDropdown.jsx';
 
 const NOTABLE_PLAYERS = [
   'builderman',
@@ -33,53 +29,117 @@ const NOTABLE_PLAYERS = [
 export function ItemOwnershipModal({
   isOpen,
   onClose,
-  item, // { id, name, category, imageUrl, outfitId, outfitName }
+  item, // { id, name, category, imageUrl, outfitId, outfitName, isOutfit }
   currentUser,
+  playerItems = [],
+  outfits = [],
   onSelectPlayer,
 }) {
   const [assetInfo, setAssetInfo] = useState(null);
-  const [loadingInfo, setLoadingInfo] = useState(true);
+  const [loadingInfo, setLoadingInfo] = useState(false);
   const [playerQuery, setPlayerQuery] = useState('');
   const [checkedPlayers, setCheckedPlayers] = useState([]);
   const [isChecking, setIsChecking] = useState(false);
+  const [searchFeedback, setSearchFeedback] = useState('');
   const [filterMode, setFilterMode] = useState('all'); // 'all' | 'wears' | 'owns'
   const [playerSearchFilter, setPlayerSearchFilter] = useState('');
   const [copied, setCopied] = useState(false);
 
+  const isOutfit = Boolean(item?.isOutfit || item?.category === 'Outfit');
+  const activeCheckRef = useRef(0);
+
   useEffect(() => {
     if (!isOpen || !item) return;
 
-    setLoadingInfo(true);
-    setCheckedPlayers([]);
+    const checkId = ++activeCheckRef.current;
     setPlayerQuery('');
+    setSearchFeedback('');
     setFilterMode('all');
+    setPlayerSearchFilter('');
+    setAssetInfo(null);
 
-    // Fetch asset details (Year, Price, Limited status)
-    fetchAssetDetails(item.id)
-      .then((info) => {
-        setAssetInfo(info);
-        setLoadingInfo(false);
-      })
-      .catch(() => setLoadingInfo(false));
+    const context = { currentUser, playerItems, outfits };
 
-    // Automatically check the current user and 2 notable players
-    const autoCheck = async () => {
-      setIsChecking(true);
-      const playersToCheck = [];
-      if (currentUser?.name) playersToCheck.push(currentUser.name);
-      playersToCheck.push('builderman', 'Shedletsky');
+    // 1. Immediately seed the current user (instant, 0ms, 100% reliable)
+    const initialList = [];
+    if (currentUser?.name) {
+      if (isOutfit) {
+        initialList.push({
+          status: 'owns',
+          label: `Saved Outfit: ${item.name || 'Custom Look'}`,
+          user: currentUser,
+          avatarUrl: item.imageUrl || currentUser.avatarFullUrl,
+          outfitName: item.name,
+        });
+      } else {
+        const isWearing = (currentUser.avatarFullUrl && playerItems.some(
+          (p) => String(p.id) === String(item.id) && p.source === 'active'
+        ));
+        const ownsInWardrobe = playerItems.some((p) => String(p.id) === String(item.id));
 
-      const results = [];
-      for (const p of playersToCheck) {
-        const res = await checkPlayerOwnership(p, item.id, item.outfitId);
-        if (res) results.push(res);
+        initialList.push({
+          status: isWearing ? 'wears' : ownsInWardrobe ? 'owns' : 'wears',
+          label: isWearing
+            ? 'Currently Wearing on Active Avatar'
+            : ownsInWardrobe
+            ? 'In Player Wardrobe / Outfits'
+            : 'Equipped Item',
+          user: currentUser,
+          avatarUrl: currentUser.avatarFullUrl,
+        });
       }
-      setCheckedPlayers(results);
-      setIsChecking(false);
+    }
+
+    setCheckedPlayers(initialList);
+
+    // 2. If it's a catalog asset, fetch price/year/limited metadata
+    if (!isOutfit && item.id) {
+      setLoadingInfo(true);
+      fetchAssetDetails(item.id)
+        .then((info) => {
+          if (activeCheckRef.current === checkId) {
+            setAssetInfo(info);
+            setLoadingInfo(false);
+          }
+        })
+        .catch(() => {
+          if (activeCheckRef.current === checkId) {
+            setLoadingInfo(false);
+          }
+        });
+    }
+
+    // 3. Automatically check notable players in parallel without blocking
+    const autoCheckNotable = async () => {
+      setIsChecking(true);
+      const notableToCheck = ['builderman', 'Shedletsky', 'Linkmon99'];
+
+      await Promise.allSettled(
+        notableToCheck.map(async (name) => {
+          if (currentUser?.name?.toLowerCase() === name.toLowerCase()) return;
+          try {
+            const res = await checkPlayerOwnership(name, item, context);
+            if (res && activeCheckRef.current === checkId) {
+              setCheckedPlayers((prev) => {
+                if (prev.some((p) => p.user?.name?.toLowerCase() === res.user?.name?.toLowerCase())) {
+                  return prev;
+                }
+                return [...prev, res];
+              });
+            }
+          } catch {
+            // Ignore error
+          }
+        })
+      );
+
+      if (activeCheckRef.current === checkId) {
+        setIsChecking(false);
+      }
     };
 
-    autoCheck();
-  }, [isOpen, item, currentUser]);
+    autoCheckNotable();
+  }, [isOpen, item, currentUser, playerItems, outfits, isOutfit]);
 
   if (!isOpen || !item) return null;
 
@@ -93,19 +153,37 @@ export function ItemOwnershipModal({
     const q = (target || playerQuery).trim();
     if (!q || isChecking) return;
 
-    // Don't re-check if already in list
-    if (checkedPlayers.some((p) => p.user?.name.toLowerCase() === q.toLowerCase())) {
+    setSearchFeedback('');
+
+    // Check if already in list
+    const existing = checkedPlayers.find(
+      (p) =>
+        p.user?.name?.toLowerCase() === q.toLowerCase() ||
+        String(p.user?.id) === q
+    );
+    if (existing) {
+      setSearchFeedback(`@${existing.user?.name} is already in the list (${existing.label})`);
       setPlayerQuery('');
       return;
     }
 
     setIsChecking(true);
-    const result = await checkPlayerOwnership(q, item.id, item.outfitId);
-    if (result) {
-      setCheckedPlayers((prev) => [result, ...prev]);
+    const context = { currentUser, playerItems, outfits };
+
+    try {
+      const result = await checkPlayerOwnership(q, item, context);
+      if (result) {
+        setCheckedPlayers((prev) => [result, ...prev]);
+        setSearchFeedback(`Found @${result.user.name}: ${result.label}`);
+      } else {
+        setSearchFeedback(`Could not find Roblox player matching "${q}"`);
+      }
+    } catch {
+      setSearchFeedback(`Could not verify player "${q}". Please check spelling.`);
+    } finally {
+      setPlayerQuery('');
+      setIsChecking(false);
     }
-    setPlayerQuery('');
-    setIsChecking(false);
   };
 
   const filteredPlayers = checkedPlayers
@@ -129,6 +207,12 @@ export function ItemOwnershipModal({
   const wearsCount = checkedPlayers.filter((p) => p.status === 'wears').length;
   const ownsCount = checkedPlayers.filter((p) => p.status === 'owns').length;
 
+  const headerImageUrl =
+    item.imageUrl ||
+    (isOutfit
+      ? `https://www.roblox.com/outfit-thumbnail/image?userOutfitId=${item.id}&width=420&height=420&format=png`
+      : `https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=150&height=150&format=png`);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
@@ -141,17 +225,16 @@ export function ItemOwnershipModal({
         {/* Top Header */}
         <div className="flex items-start justify-between p-5 border-b border-[#21262d] bg-[#0d1117]/60">
           <div className="flex items-center gap-3.5 min-w-0">
-            {/* Item Thumbnail */}
+            {/* Thumbnail */}
             <div className="w-14 h-14 rounded-xl bg-[#1c2128] border border-[#30363d] overflow-hidden flex items-center justify-center shrink-0 relative">
               <img
-                src={
-                  item.imageUrl ||
-                  `https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=150&height=150&format=png`
-                }
+                src={headerImageUrl}
                 alt={item.name}
                 className="w-full h-full object-contain p-1"
                 onError={(e) => {
-                  e.currentTarget.src = `https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=150&height=150&format=png`;
+                  if (!isOutfit) {
+                    e.currentTarget.src = `https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=150&height=150&format=png`;
+                  }
                 }}
               />
               {assetInfo?.isLimited && (
@@ -161,12 +244,17 @@ export function ItemOwnershipModal({
               )}
             </div>
 
-            {/* Item Details */}
+            {/* Details */}
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base font-bold text-white truncate max-w-md">
-                  {item.name}
+                  {item.name || (isOutfit ? 'Saved Outfit Look' : 'Roblox Item')}
                 </h3>
+                {isOutfit && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800">
+                    OUTFIT LOOK
+                  </span>
+                )}
                 {assetInfo?.isLimited && (
                   <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800">
                     {assetInfo.isLimitedUnique ? 'LIMITED U' : 'LIMITED'}
@@ -174,9 +262,11 @@ export function ItemOwnershipModal({
                 )}
               </div>
 
-              {/* Price, Year, ID Bar */}
+              {/* Sub-bar */}
               <div className="flex items-center gap-2 text-xs text-[#8b949e] flex-wrap mt-1">
-                <span className="capitalize">{item.category || 'Accessory'}</span>
+                <span className="capitalize">
+                  {isOutfit ? 'Avatar Outfit' : item.category || 'Accessory'}
+                </span>
                 <span>•</span>
                 <span>ID:</span>
                 <button
@@ -185,10 +275,14 @@ export function ItemOwnershipModal({
                   title="Copy ID"
                 >
                   <span>{item.id}</span>
-                  {copied ? <CheckIcon className="w-3 h-3 text-emerald-400" /> : <CopyIcon className="w-3 h-3 opacity-60" />}
+                  {copied ? (
+                    <CheckIcon className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <CopyIcon className="w-3 h-3 opacity-60" />
+                  )}
                 </button>
 
-                {assetInfo?.year && (
+                {!isOutfit && assetInfo?.year && (
                   <>
                     <span>•</span>
                     <span className="inline-flex items-center gap-1 text-[#c9d1d9]">
@@ -198,38 +292,43 @@ export function ItemOwnershipModal({
                   </>
                 )}
 
-                {/* Price Display */}
-                <span>•</span>
-                <span className="font-semibold text-emerald-400 inline-flex items-center gap-1">
-                  <CoinsIcon className="w-3 h-3" />
-                  {assetInfo?.price != null ? (
-                    assetInfo.price === 0 ? (
-                      'Free'
-                    ) : (
-                      `R$ ${Number(assetInfo.price).toLocaleString()}`
-                    )
-                  ) : assetInfo?.isLimited ? (
-                    'Limited (Resale)'
-                  ) : assetInfo?.isOffSale ? (
-                    'Off Sale'
-                  ) : (
-                    'Catalog Item'
-                  )}
-                </span>
+                {!isOutfit && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-emerald-400 inline-flex items-center gap-1">
+                      <CoinsIcon className="w-3 h-3" />
+                      {assetInfo?.price != null ? (
+                        assetInfo.price === 0 ? (
+                          'Free'
+                        ) : (
+                          `R$ ${Number(assetInfo.price).toLocaleString()}`
+                        )
+                      ) : assetInfo?.isLimited ? (
+                        'Limited'
+                      ) : assetInfo?.isOffSale ? (
+                        'Off Sale'
+                      ) : (
+                        'Catalog Item'
+                      )}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-1">
-            <a
-              href={`https://www.roblox.com/catalog/${item.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded-lg text-[#8b949e] hover:text-sky-400 hover:bg-[#21262d] transition-colors"
-              title="Open on Roblox Catalog"
-            >
-              <ExternalLinkIcon className="w-4 h-4" />
-            </a>
+            {!isOutfit && (
+              <a
+                href={`https://www.roblox.com/catalog/${item.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-lg text-[#8b949e] hover:text-sky-400 hover:bg-[#21262d] transition-colors"
+                title="Open on Roblox Catalog"
+              >
+                <ExternalLinkIcon className="w-4 h-4" />
+              </a>
+            )}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-[#8b949e] hover:text-white hover:bg-[#21262d] transition-colors cursor-pointer"
@@ -241,7 +340,7 @@ export function ItemOwnershipModal({
 
         {/* Modal Content */}
         <div className="p-5 overflow-y-auto flex-1 space-y-4">
-          {/* Checker Search Section */}
+          {/* Player Search & Checker Section */}
           <div className="p-4 bg-[#161b22] border border-[#21262d] rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -251,7 +350,7 @@ export function ItemOwnershipModal({
                 </h4>
               </div>
               <span className="text-[11px] text-[#8b949e]">
-                Search anyone to see if they own or wear this
+                Search any player to check if they wear or own this
               </span>
             </div>
 
@@ -269,7 +368,7 @@ export function ItemOwnershipModal({
                   type="text"
                   value={playerQuery}
                   onChange={(e) => setPlayerQuery(e.target.value)}
-                  placeholder="Enter Roblox username or ID to check..."
+                  placeholder="Enter Roblox username or ID (e.g. builderman, 156)..."
                   className="w-full pl-8 pr-3 py-1.5 bg-[#0d1117] border border-[#30363d] focus:border-sky-500 rounded-lg text-xs text-white placeholder-[#6e7681] outline-none"
                   disabled={isChecking}
                 />
@@ -283,6 +382,13 @@ export function ItemOwnershipModal({
                 {isChecking ? 'Checking...' : 'Check Player'}
               </button>
             </form>
+
+            {/* Feedback message */}
+            {searchFeedback && (
+              <p className="text-[11px] text-sky-300 font-medium">
+                {searchFeedback}
+              </p>
+            )}
 
             {/* Notable player chips */}
             <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px] text-[#8b949e]">
@@ -340,7 +446,7 @@ export function ItemOwnershipModal({
             </div>
 
             {/* Filter Player Results */}
-            {checkedPlayers.length > 3 && (
+            {checkedPlayers.length > 2 && (
               <div className="relative w-full sm:w-48">
                 <SearchIcon className="w-3.5 h-3.5 text-[#8b949e] absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -367,7 +473,7 @@ export function ItemOwnershipModal({
               )}
             </div>
           ) : (
-            <div className="space-y-2 max-h-[280px] overflow-y-auto divide-y divide-[#21262d] bg-[#161b22] border border-[#21262d] rounded-xl overflow-hidden">
+            <div className="space-y-2 max-h-[300px] overflow-y-auto divide-y divide-[#21262d] bg-[#161b22] border border-[#21262d] rounded-xl overflow-hidden">
               {filteredPlayers.map((entry, idx) => {
                 const isWears = entry.status === 'wears';
                 const isOwns = entry.status === 'owns';
@@ -384,6 +490,11 @@ export function ItemOwnershipModal({
                           src={entry.avatarUrl || entry.user?.avatarHeadshotUrl}
                           alt={entry.user?.name}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            if (entry.user?.id) {
+                              e.currentTarget.src = `https://www.roblox.com/headshot-thumbnail/image?userId=${entry.user.id}&width=150&height=150&format=png`;
+                            }
+                          }}
                         />
                       </div>
                       <div className="min-w-0">
@@ -401,7 +512,7 @@ export function ItemOwnershipModal({
                           {isWears && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                              <span>Currently Wearing on Active Avatar</span>
+                              <span>{entry.label || 'Currently Wearing on Active Avatar'}</span>
                             </span>
                           )}
                           {isOwns && (
@@ -412,7 +523,7 @@ export function ItemOwnershipModal({
                           )}
                           {!isWears && !isOwns && (
                             <span className="text-[10px] text-[#8b949e]">
-                              Does not have this item
+                              {entry.label || 'Does not have this item'}
                             </span>
                           )}
                         </div>
@@ -445,7 +556,7 @@ export function ItemOwnershipModal({
         {/* Footer */}
         <div className="p-4 bg-[#0d1117] border-t border-[#21262d] flex items-center justify-between">
           <span className="text-[11px] text-[#8b949e]">
-            Roblox cross-player asset inspection
+            Roblox cross-player avatar & item inspector
           </span>
           <button
             onClick={onClose}

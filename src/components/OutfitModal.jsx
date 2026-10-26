@@ -352,6 +352,7 @@ export function OutfitModal({
                                   id: asset.id,
                                   name: asset.name,
                                   category: asset.assetType?.name || 'Accessory',
+                                  isOutfit: false,
                                   imageUrl: `https://www.roblox.com/asset-thumbnail/image?assetId=${asset.id}&width=420&height=420&format=png`,
                                   outfitId: outfit.id,
                                   outfitName: outfit.name,

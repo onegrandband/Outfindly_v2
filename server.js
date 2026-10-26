@@ -13,6 +13,10 @@ async function startServer() {
 
   app.use(express.json());
 
+  // In-memory cache for Roblox GET proxy responses to prevent 429 rate limits
+  const proxyCache = new Map();
+  const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache
+
   // Proxy endpoint for Roblox APIs to avoid browser CORS restrictions
   app.get('/api/roblox-proxy', async (req, res) => {
     const targetUrl = req.query.url;
@@ -32,16 +36,77 @@ async function startServer() {
         return;
       }
 
-      const response = await fetch(targetUrl, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'application/json, text/plain, */*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-      });
+      // Check cache first
+      const now = Date.now();
+      const cached = proxyCache.get(targetUrl);
+      if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+        if (cached.isJson) {
+          res.json(cached.data);
+        } else {
+          res.type(cached.contentType).send(cached.data);
+        }
+        return;
+      }
 
+      const fetchWithRetry = async (retries = 1) => {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 6000);
+
+          const response = await fetch(targetUrl, {
+            signal: controller.signal,
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+              'Accept': 'application/json, text/plain, image/*, */*',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+          });
+          clearTimeout(timeout);
+
+          if (response.status === 429 && retries > 0) {
+            if (cached) {
+              return { fromCache: true };
+            }
+            await new Promise((r) => setTimeout(r, 400));
+            return fetchWithRetry(retries - 1);
+          }
+          return response;
+        } catch (fetchErr) {
+          if (cached) return { fromCache: true };
+          throw fetchErr;
+        }
+      };
+
+      const result = await fetchWithRetry();
+      if (result.fromCache && cached) {
+        if (cached.isJson) res.json(cached.data);
+        else res.type(cached.contentType).send(cached.data);
+        return;
+      }
+
+      const response = result;
       if (!response.ok) {
+        // Handle 429 rate limit gracefully for critical avatar & inventory endpoints
+        if (response.status === 429) {
+          if (cached) {
+            res.json(cached.data);
+            return;
+          }
+          if (targetUrl.includes('currently-wearing')) {
+            const fallback = { assetIds: [], rateLimited: true };
+            proxyCache.set(targetUrl, { timestamp: now, isJson: true, data: fallback });
+            res.json(fallback);
+            return;
+          }
+          if (targetUrl.includes('/items/Asset/') || targetUrl.includes('/outfits')) {
+            const fallback = { data: [], rateLimited: true, filteredCount: 0, total: 0 };
+            proxyCache.set(targetUrl, { timestamp: now, isJson: true, data: fallback });
+            res.json(fallback);
+            return;
+          }
+        }
+
         const errorText = await response.text();
         res.status(response.status).json({
           error: `Roblox API error (${response.status})`,
@@ -53,13 +118,26 @@ async function startServer() {
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const data = await response.json();
+        proxyCache.set(targetUrl, {
+          timestamp: now,
+          isJson: true,
+          contentType,
+          data,
+        });
         res.json(data);
       } else {
-        const text = await response.text();
-        res.send(text);
+        const buffer = await response.arrayBuffer();
+        const data = Buffer.from(buffer);
+        proxyCache.set(targetUrl, {
+          timestamp: now,
+          isJson: false,
+          contentType,
+          data,
+        });
+        res.type(contentType).send(data);
       }
     } catch (error) {
-      console.error('Roblox Proxy error:', error);
+      console.error('Roblox Proxy error:', error.message || error);
       res.status(500).json({ error: error.message || 'Internal proxy error' });
     }
   });
