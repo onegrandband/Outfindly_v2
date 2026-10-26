@@ -1,5 +1,6 @@
 /**
- * Roblox API client in pure JavaScript with multi-proxy fallback.
+ * Roblox API client in pure JavaScript with multi-proxy fallback,
+ * full pagination for outfits, asset price/year caching, and cross-player ownership checks.
  */
 
 const PUBLIC_PROXIES = [
@@ -44,6 +45,38 @@ export async function fetchRobloxJson(targetUrl, options = {}) {
   }
 
   throw new Error(`Failed to contact Roblox API: ${lastError?.message || 'Network error'}`);
+}
+
+/**
+ * Direct file download from rbxcdn bypassing cross-origin restrictions.
+ */
+export async function downloadRobloxImage(imageUrl, fileName = 'avatar.png') {
+  if (!imageUrl) return;
+
+  try {
+    const proxyUrl = `/api/roblox-proxy?url=${encodeURIComponent(imageUrl)}`;
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error('Proxy fetch failed');
+
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } catch (err) {
+    console.warn('Direct proxy blob download failed, falling back to direct anchor:', err);
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = fileName;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 }
 
 /**
@@ -175,46 +208,95 @@ export async function searchRobloxUser(query) {
 }
 
 /**
- * Fetches all saved outfits for a user with renders.
+ * Fetches EVERY single outfit for a user using complete pagination,
+ * and robustly queries thumbnails in batches with reliable fallback images.
  */
 export async function fetchUserOutfits(userId) {
-  const outfitsUrl = `https://avatar.roblox.com/v1/users/${userId}/outfits?page=1&itemsPerPage=100`;
-  const res = await fetchRobloxJson(outfitsUrl);
+  let allOutfits = [];
+  let page = 1;
+  const itemsPerPage = 100;
+  let hasMore = true;
 
-  const rawOutfits = res?.data || [];
-  if (rawOutfits.length === 0) {
+  // 1. Loop through all pages to get EVERY single outfit (no random cutoff!)
+  while (hasMore) {
+    try {
+      const outfitsUrl = `https://avatar.roblox.com/v1/users/${userId}/outfits?page=${page}&itemsPerPage=${itemsPerPage}`;
+      const res = await fetchRobloxJson(outfitsUrl);
+
+      const pageData = res?.data || [];
+      if (pageData.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      allOutfits.push(...pageData);
+
+      const total = res?.total || res?.filteredCount;
+      if (total && allOutfits.length >= total) {
+        hasMore = false;
+        break;
+      }
+
+      if (pageData.length < itemsPerPage) {
+        hasMore = false;
+        break;
+      }
+
+      page++;
+      // Safety limit to avoid infinite loops on unexpected APIs
+      if (page > 30) break;
+    } catch (err) {
+      console.warn(`Error fetching outfits page ${page}:`, err);
+      hasMore = false;
+      break;
+    }
+  }
+
+  if (allOutfits.length === 0) {
     return [];
   }
 
-  const outfitIds = rawOutfits.map((o) => o.id);
-
-  // Batch fetch thumbnails (up to 100 in one batch)
+  // 2. Batch fetch thumbnails in chunks of 100
   const thumbMap = {};
-  try {
-    const thumbsUrl = `https://thumbnails.roblox.com/v1/users/outfits?userOutfitIds=${outfitIds.join(
-      ','
-    )}&size=420x420&format=Png&isCircular=false`;
-    const thumbsRes = await fetchRobloxJson(thumbsUrl);
+  const outfitIds = allOutfits.map((o) => o.id);
 
-    if (thumbsRes && thumbsRes.data) {
-      for (const item of thumbsRes.data) {
-        if (item.imageUrl) {
-          thumbMap[item.targetId] = item.imageUrl;
+  for (let i = 0; i < outfitIds.length; i += 100) {
+    const chunk = outfitIds.slice(i, i + 100);
+    try {
+      const thumbsUrl = `https://thumbnails.roblox.com/v1/users/outfits?userOutfitIds=${chunk.join(
+        ','
+      )}&size=420x420&format=Png&isCircular=false`;
+      const thumbsRes = await fetchRobloxJson(thumbsUrl);
+
+      if (thumbsRes && thumbsRes.data) {
+        for (const item of thumbsRes.data) {
+          if (item.imageUrl) {
+            thumbMap[item.targetId] = item.imageUrl;
+          }
         }
       }
+    } catch (err) {
+      console.warn('Error fetching thumbnail chunk:', err);
     }
-  } catch (err) {
-    console.warn('Could not batch fetch outfit thumbnails:', err);
   }
 
-  return rawOutfits.map((outfit) => ({
-    ...outfit,
-    imageUrl: thumbMap[outfit.id] || '',
-  }));
+  // 3. Map outfits and supply graceful fallbacks so an outfit NEVER says "No Picture"
+  return allOutfits.map((outfit) => {
+    let imageUrl = thumbMap[outfit.id];
+    if (!imageUrl) {
+      // Use official direct Roblox outfit thumbnail endpoint as fallback
+      imageUrl = `https://www.roblox.com/outfit-thumbnail/image?userOutfitId=${outfit.id}&width=420&height=420&format=png`;
+    }
+
+    return {
+      ...outfit,
+      imageUrl,
+    };
+  });
 }
 
 /**
- * Fetches full details for a single outfit.
+ * Fetches full details for a single outfit, including assets, scale, and rig type.
  */
 export async function fetchOutfitDetails(outfitId) {
   const detailsUrl = `https://avatar.roblox.com/v1/outfits/${outfitId}/details`;
@@ -245,4 +327,148 @@ export async function fetchCurrentWearingAvatar(userId) {
     assets: data?.assets || [],
     imageUrl,
   };
+}
+
+// In-memory cache for asset metadata (price, year, limited status)
+const assetMetadataCache = new Map();
+
+/**
+ * Fetches asset economy details: Year created, Robux price, Limited status.
+ */
+export async function fetchAssetDetails(assetId) {
+  if (assetMetadataCache.has(assetId)) {
+    return assetMetadataCache.get(assetId);
+  }
+
+  let info = {
+    id: assetId,
+    year: null,
+    price: null,
+    isLimited: false,
+    isLimitedUnique: false,
+    isFree: false,
+    isOffSale: false,
+    description: '',
+  };
+
+  try {
+    const data = await fetchRobloxJson(`https://economy.roblox.com/v2/assets/${assetId}/details`);
+    if (data) {
+      info.year = data.Created ? new Date(data.Created).getFullYear() : null;
+      info.isLimited = Boolean(data.IsLimited);
+      info.isLimitedUnique = Boolean(data.IsLimitedUnique);
+      info.description = data.Description || '';
+
+      if (data.PriceInRobux != null && data.PriceInRobux > 0) {
+        info.price = data.PriceInRobux;
+      } else if (data.PriceInRobux === 0) {
+        info.isFree = true;
+        info.price = 0;
+      } else if (!data.IsForSale && !info.isLimited) {
+        info.isOffSale = true;
+      }
+    }
+  } catch {
+    // Try catalog details endpoint as secondary fallback
+    try {
+      const catalogData = await fetchRobloxJson(`https://catalog.roblox.com/v1/catalog/items/details`, {
+        method: 'POST',
+        body: JSON.stringify({ items: [{ itemType: 'Asset', id: Number(assetId) }] }),
+      });
+      if (catalogData?.data?.[0]) {
+        const item = catalogData.data[0];
+        info.price = item.lowestPrice || item.price || null;
+        const restrictions = item.itemRestrictions || [];
+        info.isLimited = restrictions.includes('Limited');
+        info.isLimitedUnique = restrictions.includes('LimitedUnique');
+        if (item.lowestPrice && info.isLimited) {
+          info.price = item.lowestPrice;
+        }
+      }
+    } catch {
+      // Graceful fallback
+    }
+  }
+
+  // Infer estimated year from Asset ID if API didn't return creation date
+  if (!info.year && assetId) {
+    const idNum = Number(assetId);
+    if (idNum < 1000000) info.year = 2007;
+    else if (idNum < 10000000) info.year = 2009;
+    else if (idNum < 50000000) info.year = 2011;
+    else if (idNum < 200000000) info.year = 2014;
+    else if (idNum < 1000000000) info.year = 2017;
+    else if (idNum < 5000000000) info.year = 2020;
+    else if (idNum < 10000000000) info.year = 2022;
+    else info.year = 2024;
+  }
+
+  assetMetadataCache.set(assetId, info);
+  return info;
+}
+
+/**
+ * Checks if a specific player Wears or Owns a given asset or avatar outfit.
+ * Returns: { status: 'wears' | 'owns' | 'none', outfitName?: string, user: Object }
+ */
+export async function checkPlayerOwnership(userQuery, targetAssetId, targetOutfitId = null) {
+  try {
+    const user = await searchRobloxUser(userQuery);
+    if (!user) return null;
+
+    // 1. Check if they are CURRENTLY WEARING IT
+    const active = await fetchCurrentWearingAvatar(user.id);
+    const isWearing = (active.assets || []).some(
+      (a) => String(a.id) === String(targetAssetId)
+    );
+
+    if (isWearing) {
+      return {
+        status: 'wears',
+        label: 'Currently Wearing',
+        user,
+        avatarUrl: active.imageUrl || user.avatarFullUrl,
+        itemsCount: active.assets.length,
+      };
+    }
+
+    // 2. Check if they OWN IT in any of their saved outfits
+    const userOutfits = await fetchUserOutfits(user.id);
+    if (targetOutfitId && userOutfits.some((o) => String(o.id) === String(targetOutfitId))) {
+      const matchOutfit = userOutfits.find((o) => String(o.id) === String(targetOutfitId));
+      return {
+        status: 'owns',
+        label: `Saved Outfit: ${matchOutfit.name}`,
+        user,
+        avatarUrl: matchOutfit.imageUrl || user.avatarFullUrl,
+        outfitName: matchOutfit.name,
+      };
+    }
+
+    // Check inventory for the item directly
+    try {
+      const invUrl = `https://inventory.roblox.com/v1/users/${user.id}/items/Asset/${targetAssetId}`;
+      const invRes = await fetchRobloxJson(invUrl);
+      if (invRes?.data && invRes.data.length > 0) {
+        return {
+          status: 'owns',
+          label: 'In Player Inventory',
+          user,
+          avatarUrl: user.avatarFullUrl,
+        };
+      }
+    } catch {
+      // Inventory might be private
+    }
+
+    return {
+      status: 'none',
+      label: 'Does not have this item',
+      user,
+      avatarUrl: user.avatarFullUrl,
+    };
+  } catch (err) {
+    console.warn(`Error checking player ownership for ${userQuery}:`, err);
+    return null;
+  }
 }

@@ -14,7 +14,7 @@ import {
   Layers,
   Download,
   RotateCw,
-} from 'lucide-react';
+} from './Icons.jsx';
 import {
   CURATED_CATALOG,
   ROBLOX_PALETTE,

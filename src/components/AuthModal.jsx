@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { X, Cloud, Smartphone, Laptop, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
+import {
+  XIcon,
+  CloudIcon,
+  DeviceIcon,
+  CheckIcon,
+  ShieldIcon,
+  AlertIcon,
+} from './Icons.jsx';
 
 export function AuthModal({ isOpen, onClose, onLoggedIn }) {
   const { user, signInWithGoogle, signOut, error, clearError } = useAuth();
@@ -25,74 +32,71 @@ export function AuthModal({ isOpen, onClose, onLoggedIn }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className="bg-[#12161f] border border-[#30363d] rounded-2xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden"
+        className="bg-[#12161f] border border-[#2d333b] rounded-2xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Glow accent */}
-        <div className="absolute -top-16 -right-16 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
-
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-[#8b949e] hover:text-white p-1 rounded-lg hover:bg-[#21262d] transition-colors"
+          className="absolute top-4 right-4 text-[#8b949e] hover:text-white p-1 rounded-lg hover:bg-[#1f2937] transition-colors cursor-pointer"
         >
-          <X className="w-5 h-5" />
+          <XIcon className="w-5 h-5" />
         </button>
 
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-white">
-            <Cloud className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-[#1e293b] border border-[#334155] flex items-center justify-center text-sky-400">
+            <CloudIcon className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">
-              {user ? 'Account & Cross-Device Sync' : 'Sign In to Sync Avatars'}
+            <h3 className="text-base font-bold text-white">
+              {user ? 'Account & Device Sync' : 'Sign In to Access on Any Device'}
             </h3>
-            <p className="text-xs text-[#8b949e]">Access all your saved avatars from any device</p>
+            <p className="text-xs text-[#8b949e]">Firebase Cloud + Local IndexedDB</p>
           </div>
         </div>
 
         {error && (
           <div className="mb-4 p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+            <AlertIcon className="w-4 h-4 shrink-0 text-rose-400" />
             <span>{error}</span>
           </div>
         )}
 
         {user ? (
           <div className="space-y-4">
-            <div className="p-4 bg-[#161b22] border border-[#21262d] rounded-xl flex items-center gap-3">
+            <div className="p-3.5 bg-[#161b22] border border-[#21262d] rounded-xl flex items-center gap-3">
               {user.photoURL ? (
                 <img
                   src={user.photoURL}
                   alt={user.displayName || 'User'}
-                  className="w-12 h-12 rounded-full border border-cyan-500/30 object-cover"
+                  className="w-11 h-11 rounded-full border border-sky-500/30 object-cover"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center text-lg">
+                <div className="w-11 h-11 rounded-full bg-sky-950 text-sky-400 font-bold flex items-center justify-center text-base">
                   {(user.displayName || user.email || 'U')[0].toUpperCase()}
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-white truncate">{user.displayName || 'Roblox Fan'}</p>
-                <p className="text-xs text-[#8b949e] truncate">{user.email}</p>
+                <p className="text-xs font-bold text-white truncate">{user.displayName || 'Roblox Fan'}</p>
+                <p className="text-[11px] text-[#8b949e] truncate">{user.email}</p>
                 <div className="flex items-center gap-1.5 mt-1 text-[11px] text-emerald-400">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <CheckIcon className="w-3.5 h-3.5" />
                   <span>Cloud Sync Active</span>
                 </div>
               </div>
             </div>
 
             <div className="p-3 bg-[#0d1117] border border-[#21262d] rounded-xl text-xs text-[#8b949e] space-y-1.5">
-              <p className="text-white font-medium">How sync works:</p>
-              <p>• All your avatars are saved locally in IndexedDB & LocalStorage for instant offline access.</p>
-              <p>• They are also synced securely to your private cloud storage so you can access them from your phone, tablet, or another browser!</p>
+              <p className="text-[#c9d1d9] font-medium">Cross-Device Storage Active:</p>
+              <p>• Avatars are cached locally in IndexedDB & LocalStorage for instant offline loading.</p>
+              <p>• Saved items automatically sync with your private Firebase database so you can access them on your phone, tablet, or PC!</p>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 onClick={onClose}
-                className="px-4 py-2 bg-[#21262d] hover:bg-[#30363d] text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 bg-[#1f2937] hover:bg-[#374151] text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 Done
               </button>
@@ -101,7 +105,7 @@ export function AuthModal({ isOpen, onClose, onLoggedIn }) {
                   await signOut();
                   onClose();
                 }}
-                className="px-4 py-2 bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 border border-rose-800/50 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                className="px-4 py-2 bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 border border-rose-800/40 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
               >
                 Sign Out
               </button>
@@ -109,26 +113,20 @@ export function AuthModal({ isOpen, onClose, onLoggedIn }) {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="space-y-2 py-2">
+            <div className="space-y-2 py-1">
               <div className="flex items-start gap-3 p-2.5 rounded-lg bg-[#161b22] border border-[#21262d]">
-                <Smartphone className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                <DeviceIcon className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
                 <div className="text-xs">
-                  <p className="text-white font-semibold">Access from any device</p>
-                  <p className="text-[#8b949e]">Upload an avatar or outfit file on your PC, view it instantly on mobile.</p>
+                  <p className="text-white font-medium">Access from any device</p>
+                  <p className="text-[#8b949e]">Save on your computer, view and download on mobile.</p>
                 </div>
               </div>
+
               <div className="flex items-start gap-3 p-2.5 rounded-lg bg-[#161b22] border border-[#21262d]">
-                <Laptop className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                <ShieldIcon className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                 <div className="text-xs">
-                  <p className="text-white font-semibold">Dual-layer storage</p>
-                  <p className="text-[#8b949e]">IndexedDB + LocalStorage for lightning-fast speeds, plus Firebase cloud backups.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-[#161b22] border border-[#21262d]">
-                <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                <div className="text-xs">
-                  <p className="text-white font-semibold">Private & Safe</p>
-                  <p className="text-[#8b949e]">Your avatar collection is tied exclusively to your account.</p>
+                  <p className="text-white font-medium">Fast & Offline Ready</p>
+                  <p className="text-[#8b949e]">IndexedDB + LocalStorage keeps all files responsive even when offline.</p>
                 </div>
               </div>
             </div>
@@ -136,7 +134,7 @@ export function AuthModal({ isOpen, onClose, onLoggedIn }) {
             <button
               onClick={handleGoogleLogin}
               disabled={isSubmitting}
-              className="w-full py-2.5 px-4 bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+              className="w-full py-2.5 px-4 bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98] disabled:opacity-60 cursor-pointer"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -156,11 +154,11 @@ export function AuthModal({ isOpen, onClose, onLoggedIn }) {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>{isSubmitting ? 'Signing in...' : 'Sign in with Google'}</span>
+              <span>{isSubmitting ? 'Connecting...' : 'Sign in with Google'}</span>
             </button>
 
             <p className="text-[11px] text-center text-[#8b949e]">
-              Or continue without signing in — your avatars will be stored in your browser's IndexedDB & LocalStorage.
+              No account required for local use — your files will remain saved in IndexedDB & LocalStorage on this device.
             </p>
           </div>
         )}

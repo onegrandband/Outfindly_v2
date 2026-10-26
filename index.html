@@ -1,20 +1,105 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Roblox Saved Avatars & Outfits Explorer</title>
-    <meta name="description" content="Inspect and browse any Roblox player's custom avatar creations, saved outfits, catalog accessories, and avatar renders." />
-    <meta property="og:title" content="Roblox Saved Avatars & Outfits Explorer" />
-    <meta property="og:description" content="Inspect and browse any Roblox player's custom avatar creations, saved outfits, catalog accessories, and avatar renders." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  </head>
-  <body class="bg-[#0b0f17] text-[#f0f6fc] antialiased min-h-screen selection:bg-cyan-500/20 selection:text-cyan-300">
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<html lang="en" prefix="og: https://ogp.me">
+<head>
+  <!-- 1. Technical Layout & Core Standards -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Language" content="en" />
+  <meta name="color-scheme" content="dark light" />
+
+  <!-- 2. Primary Metadata & Information Architecture -->
+  <title>Outfindly v2.0</title>
+  <meta name="title" content="Outfindly v2.0" />
+  <meta name="description" content="Find and browse any Roblox player's avatars." />
+  <meta name="keywords" content="Roblox, avatars, Outfindly, catalog, Roblox outfits, avatar inspector, Roblox player, custom avatars, catalog items, cac, catalog avatar creator, free, new, safe, online, outfit, outfindly, 2.0, 2, vtwo, two, v2, qwertyuiopasdfg, safe, secure, finder, lookup, avatar, maker, creator, no download, onlinesafe, freepreview, no subscription, no download, in browser, browser, no paid plan, no plans, no subscription, no fee, no annual price, no annual subscription, no monhtly cost, no monhtly fost, no monthly cost" />
+  <meta name="author" content="Outfindly" />
+  <meta name="owner" content="Outfindly" />
+  <meta name="designer" content="Outfindly" />
+  <meta name="reply-to" content="support@outfindly.com" />
+  <meta name="url" content="https://outfindly.com" />
+  <meta name="identifier-URL" content="https://outfindly.com" />
+  <meta name="category" content="Gaming / Web Tools" />
+  <meta name="coverage" content="Worldwide" />
+  <meta name="distribution" content="Global" />
+  <meta name="rating" content="General" />
+  <meta name="language" content="English" />
+
+  <!-- 3. Engine & Bot Routing (SEO) -->
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+  <meta name="googlebot" content="index, follow" />
+  <meta name="bingbot" content="index, follow" />
+  <meta name="slurp" content="index, follow" />
+  <meta name="duckduckbot" content="index, follow" />
+  <meta name="baiduspider" content="index, follow" />
+  <meta name="yandex" content="index, follow" />
+  <meta name="revisit-after" content="7 days" />
+  <meta name="google" content="notranslate" />
+  <link rel="canonical" href="https://outfindly.com" />
+
+  <!-- 4. Geo-Targeting & Regional Localization -->
+  <meta name="geo.region" content="US" />
+  <meta name="geo.position" content="34.6958;-86.7453" />
+  <meta name="ICBM" content="34.6958, -86.7453" />
+  <meta name="geo.placename" content="Madison, Alabama" />
+
+  <!-- 5. App Ecosystem & Mobile Optimization (Standalone Web App Mode) -->
+  <meta name="application-name" content="Outfindly" />
+  <meta name="apple-mobile-web-app-title" content="Outfindly" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0b0f17" />
+  <meta name="msapplication-TileColor" content="#0b0f17" />
+  <meta name="msapplication-config" content="/browserconfig.xml" />
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no" />
+  <meta name="handheldfriendly" content="true" />
+  <meta name="mobileoptimized" content="width" />
+
+  <!-- 6. Open Graph Protocol with Global Localization Variations -->
+  <meta property="og:site_name" content="Outfindly" />
+  <meta property="og:title" content="Outfindly" />
+  <meta property="og:description" content="Inspect and browse any Roblox player's custom avatar creations, saved outfits, catalog accessories, and avatar renders." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://outfindly.com" />
+  <meta property="og:image" content="https://outfindly.com" />
+  <meta property="og:image:secure_url" content="https://outfindly.com" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Outfindly v2.0 Dashboard" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="en_GB" />
+  <meta property="og:locale:alternate" content="es_ES" />
+  <meta property="og:locale:alternate" content="fr_FR" />
+  <meta property="og:locale:alternate" content="de_DE" />
+  <meta property="og:locale:alternate" content="pt_BR" />
+
+  <!-- 7. Twitter / X Protocol -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@outfindly" />
+  <meta name="twitter:creator" content="@outfindly" />
+  <meta name="twitter:title" content="Outfindly" />
+  <meta name="twitter:description" content="Find any created avatar by typing in a username :)" />
+  <meta name="twitter:image" content="https://outfindly.com" />
+  <meta name="twitter:image:alt" content="Outfindly v2.0 Dashboard" />
+
+  <!-- 8. Hardened Content Security, Delivery & Performance -->
+  <meta http-equiv="Strict-Transport-Security" content="max-age=63072000; includeSubDomains; preload" />
+  <meta http-equiv="X-Frame-Options" content="DENY" />
+  <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+  <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+  <meta http-equiv="Permissions-Policy" content="geolocation=(), camera=(), microphone=(), payment=()" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://googleapis.com; font-src 'self' https://fonts.gstatic.com https://gstatic.com data:; img-src 'self' data: blob: https://outfindly.com https://*.rbxcdn.com https://*.roblox.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.roblox.com;" />
+
+  <!-- Preconnect & Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+</head>
+<body class="bg-[#0b0f17] text-[#f0f6fc] antialiased min-h-screen selection:bg-cyan-500/20 selection:text-cyan-300">
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
 </html>

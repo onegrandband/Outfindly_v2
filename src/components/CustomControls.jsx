@@ -49,13 +49,13 @@ export function CustomSlider({ min = 0, max = 100, step = 1, value, onChange, la
       >
         {/* Fill track */}
         <div
-          className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-cyan-500 to-[#00A2FF] rounded-full shadow-[0_0_8px_rgba(0,162,255,0.4)]"
+          className="absolute left-0 top-0 bottom-0 bg-sky-600 rounded-full"
           style={{ width: `${percentage}%` }}
         />
 
         {/* Custom thumb */}
         <div
-          className="absolute -translate-x-1/2 w-4 h-4 bg-white rounded-full shadow-md border-2 border-[#00A2FF] hover:scale-110 active:scale-95 transition-transform"
+          className="absolute -translate-x-1/2 w-4 h-4 bg-white rounded-full shadow-sm border-2 border-sky-600 hover:scale-105 active:scale-95 transition-transform"
           style={{ left: `${percentage}%` }}
         />
       </div>
