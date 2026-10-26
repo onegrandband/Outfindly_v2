@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "saved_avatar": {
+      "title": "Saved Avatar File",
+      "description": "User uploaded avatar file, 3D model, image, or outfit config stored across devices",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "fileType": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "fileSize": {
+          "type": "number"
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "dataUrl": {
+          "type": "string",
+          "maxLength": 1048576
+        },
+        "tags": {
+          "type": "array"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "name",
+        "fileName",
+        "fileType",
+        "fileSize",
+        "category",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/saved_avatars/{avatarId}": {
+      "schema": "saved_avatar",
+      "description": "User's private saved avatar files and outfit assets"
+    }
+  }
+}

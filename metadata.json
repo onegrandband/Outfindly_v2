@@ -1,0 +1,6 @@
+{
+  "name": "Roblox Saved Avatars & Outfits Explorer",
+  "description": "Inspect and browse Roblox players' avatar creations, customize in avatar maker, and save avatar files in IndexedDB and LocalStorage with Firebase cross-device cloud sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
