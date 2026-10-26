@@ -84,7 +84,43 @@ export function AvatarSaver() {
   const loadAvatars = async () => {
     setIsLoading(true);
     try {
-      const items = await getAllFromIndexedDB();
+      let items = await getAllFromIndexedDB();
+
+      // Automatically migrate any previous "Classic Blocky" sample avatar to 1x1x1x1
+      let needsRefresh = false;
+      for (const item of items) {
+        if (
+          item.name === 'Classic Blocky Avatar' ||
+          item.name === 'Classic Blocky Character' ||
+          item.name.toLowerCase().includes('classic blocky')
+        ) {
+          item.name = '1x1x1x1';
+          item.fileName = '1x1x1x1.jpeg';
+          item.fileType = 'image/jpeg';
+          item.description = '1x1x1x1 - Infamous Roblox mythical entity and swordsman.';
+          item.tags = ['1x1x1x1', 'MYTH', 'AVATAR'];
+          try {
+            const resp = await fetch('/assets/aistudio/image_844b9b71.jpeg');
+            const blob = await resp.blob();
+            const dataUrl = await new Promise((res) => {
+              const r = new FileReader();
+              r.onload = () => res(r.result);
+              r.readAsDataURL(blob);
+            });
+            item.dataUrl = dataUrl;
+            item.fileSize = blob.size;
+          } catch {
+            item.dataUrl = '/assets/aistudio/image_844b9b71.jpeg';
+          }
+          await saveToIndexedDB(item);
+          needsRefresh = true;
+        }
+      }
+
+      if (needsRefresh) {
+        items = await getAllFromIndexedDB();
+      }
+
       setAvatars(items);
 
       if (user?.uid) {
@@ -231,55 +267,25 @@ export function AvatarSaver() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Add demo avatar for quick testing
+  // Add 1x1x1x1 demo avatar for quick testing
   const handleAddSampleAvatar = async () => {
     try {
-      const canvas = document.createElement('canvas');
-      canvas.width = 400;
-      canvas.height = 400;
-      const ctx = canvas.getContext('2d');
-
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(0, 0, 400, 400);
-
-      // Simple character silhouette
-      ctx.fillStyle = '#e2e8f0';
-      ctx.beginPath();
-      ctx.roundRect(140, 50, 120, 100, 10);
-      ctx.roundRect(110, 160, 180, 140, 8);
-      ctx.roundRect(50, 160, 50, 130, 6);
-      ctx.roundRect(300, 160, 50, 130, 6);
-      ctx.roundRect(120, 310, 70, 80, 4);
-      ctx.roundRect(210, 310, 70, 80, 4);
-      ctx.fill();
-
-      // Face
-      ctx.fillStyle = '#0f172a';
-      ctx.beginPath();
-      ctx.arc(175, 95, 7, 0, Math.PI * 2);
-      ctx.arc(225, 95, 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(200, 115, 18, 0, Math.PI);
-      ctx.lineWidth = 3.5;
-      ctx.strokeStyle = '#0f172a';
-      ctx.stroke();
-
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
-      const sampleFile = new File([blob], 'Classic_Blocky_Avatar.png', { type: 'image/png' });
+      const response = await fetch('/assets/aistudio/image_844b9b71.jpeg');
+      const blob = await response.blob();
+      const sampleFile = new File([blob], '1x1x1x1.jpeg', { type: 'image/jpeg' });
 
       await saveAvatarFile({
         file: sampleFile,
-        name: 'Classic Blocky Avatar',
-        description: 'Sample avatar file stored in local IndexedDB',
-        tags: ['CLASSIC', 'AVATAR'],
+        name: '1x1x1x1',
+        description: '1x1x1x1 - Infamous Roblox mythical entity and swordsman.',
+        tags: ['1x1x1x1', 'MYTH', 'AVATAR'],
         category: 'image',
         userId: user?.uid || null,
       });
 
       await loadAvatars();
     } catch (err) {
-      console.error('Failed to add sample avatar:', err);
+      console.error('Failed to add 1x1x1x1 avatar:', err);
     }
   };
 
@@ -479,7 +485,7 @@ export function AvatarSaver() {
                 onClick={handleAddSampleAvatar}
                 className="px-3.5 py-2 bg-[#1f2937] hover:bg-[#374151] text-[#c9d1d9] text-xs font-medium rounded-lg border border-[#374151] transition-colors cursor-pointer"
               >
-                <span>Add Sample Avatar</span>
+                <span>Add 1x1x1x1 Avatar</span>
               </button>
             )}
           </div>
@@ -600,7 +606,7 @@ export function AvatarSaver() {
               onClick={handleAddSampleAvatar}
               className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg cursor-pointer"
             >
-              Load Sample Avatar
+              Load 1x1x1x1 Avatar
             </button>
           )}
         </div>
