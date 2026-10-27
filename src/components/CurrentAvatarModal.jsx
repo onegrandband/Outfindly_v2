@@ -100,15 +100,32 @@ export function CurrentAvatarModal({
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-[#21262d] bg-[#0d1117]/60">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-[#f0f6fc]">
                 Active Equipped Clothes
               </h2>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/40">
                 Worn Right Now
               </span>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-600/50 text-emerald-300 inline-flex items-center gap-1">
+                <CoinsIcon className="w-3 h-3" />
+                <span>
+                  Total Value:{' '}
+                  {assets.reduce((sum, a) => {
+                    const p = assetInfoMap[a.id]?.price;
+                    return typeof p === 'number' ? sum + p : sum;
+                  }, 0) > 0
+                    ? `R$ ${assets
+                        .reduce((sum, a) => {
+                          const p = assetInfoMap[a.id]?.price;
+                          return typeof p === 'number' ? sum + p : sum;
+                        }, 0)
+                        .toLocaleString()}`
+                    : 'R$ 0'}
+                </span>
+              </span>
             </div>
-            <p className="text-xs text-[#8b949e] mt-0.5">
+            <p className="text-xs text-[#8b949e] mt-1">
               Items currently equipped by <span className="text-[#f0f6fc] font-medium">{user.displayName}</span> (@{user.name})
             </p>
           </div>

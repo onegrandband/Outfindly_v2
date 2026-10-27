@@ -212,12 +212,18 @@ export function saveCharacter(character) {
     });
   }
   localStorage.setItem(SAVED_CHARACTERS_KEY, JSON.stringify(characters));
+  import('./accountSync.js')
+    .then((mod) => mod.pushAvatarMakerToCloud(characters))
+    .catch(() => {});
   return characters;
 }
 
 export function deleteCharacter(charId) {
   const characters = getSavedCharacters().filter((c) => c.id !== charId);
   localStorage.setItem(SAVED_CHARACTERS_KEY, JSON.stringify(characters));
+  import('./accountSync.js')
+    .then((mod) => mod.pushAvatarMakerToCloud(characters))
+    .catch(() => {});
   return characters;
 }
 

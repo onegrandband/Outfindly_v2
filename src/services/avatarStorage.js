@@ -10,6 +10,7 @@ import {
   handleFirestoreError,
   OperationType,
 } from './firebase.js';
+import { pushSavedAssetToCloud } from './accountSync.js';
 
 const DB_NAME = 'RobloxAvatarSaverDB';
 const DB_VERSION = 1;
@@ -225,7 +226,7 @@ export async function saveAvatarFile({
   const existingAll = await getAllFromIndexedDB();
   saveMetadataToLocalStorage(existingAll);
 
-  // 3. If authenticated, sync to Firestore
+  // 3. If authenticated with Firebase or Code Account, sync to cloud
   if (auth.currentUser && userId) {
     try {
       await syncItemToFirestore(item, auth.currentUser.uid);
@@ -236,6 +237,13 @@ export async function saveAvatarFile({
     } catch (err) {
       console.warn('Could not sync newly saved avatar to Firestore immediately:', err);
     }
+  }
+
+  // 4. Sync to code account if logged in
+  try {
+    await pushSavedAssetToCloud(item);
+  } catch (err) {
+    console.warn('Could not push saved asset to code account:', err);
   }
 
   return item;

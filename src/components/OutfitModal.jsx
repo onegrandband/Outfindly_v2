@@ -113,6 +113,24 @@ export function OutfitModal({
                   Store Outfit
                 </span>
               )}
+
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-600/50 text-emerald-300 inline-flex items-center gap-1">
+                <CoinsIcon className="w-3 h-3" />
+                <span>
+                  Total Outfit Value:{' '}
+                  {assets.reduce((sum, a) => {
+                    const p = assetInfoMap[a.id]?.price;
+                    return typeof p === 'number' ? sum + p : sum;
+                  }, 0) > 0
+                    ? `R$ ${assets
+                        .reduce((sum, a) => {
+                          const p = assetInfoMap[a.id]?.price;
+                          return typeof p === 'number' ? sum + p : sum;
+                        }, 0)
+                        .toLocaleString()}`
+                    : 'R$ 0'}
+                </span>
+              </span>
             </div>
             <div className="flex items-center gap-2 text-xs text-[#8b949e] mt-1 flex-wrap">
               <span>Outfit ID:</span>

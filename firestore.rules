@@ -33,6 +33,15 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    // Randomized Code Accounts for multi-device cross-sync (iPad, Mobile, PC)
+    match /accounts/{accountCode} {
+      allow read, write: if accountCode is string && accountCode.size() >= 5 && accountCode.size() <= 64;
+
+      match /{subcollection=**} {
+        allow read, write: if accountCode is string && accountCode.size() >= 5 && accountCode.size() <= 64;
+      }
+    }
+
     function isValidSavedAvatar(data) {
       return data.keys().hasAll(['id', 'userId', 'name', 'fileName', 'fileType', 'fileSize', 'category', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly(['id', 'userId', 'name', 'description', 'fileName', 'fileType', 'fileSize', 'category', 'dataUrl', 'tags', 'createdAt', 'updatedAt'])

@@ -7,22 +7,44 @@ import {
   CoinsIcon,
   CalendarIcon,
   UsersIcon,
+  ShirtIcon,
 } from './Icons.jsx';
-import { fetchAssetDetails, downloadRobloxImage } from '../services/roblox.js';
+import {
+  fetchAssetDetails,
+  downloadRobloxImage,
+  assetThumbnailCache,
+  fetchAssetThumbnails,
+} from '../services/roblox.js';
 
 export function ItemCard({
-  item, // { id, name, category, assetType, outfitName }
+  item, // { id, name, category, assetType, imageUrl }
   onCheckOwnership,
 }) {
   const [details, setDetails] = useState(null);
   const [copied, setCopied] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-
-  const imageUrl = `https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=420&height=420&format=png`;
+  const [imgSrc, setImgSrc] = useState(
+    item.imageUrl ||
+      assetThumbnailCache.get(Number(item.id)) ||
+      `https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=420&height=420&format=png`
+  );
+  const [imgFailed, setImgFailed] = useState(false);
 
   useEffect(() => {
+    // If not in cache or provided, fetch direct CDN thumbnail
+    const idNum = Number(item.id);
+    if (!item.imageUrl && !assetThumbnailCache.has(idNum)) {
+      fetchAssetThumbnails([idNum]).then((thumbs) => {
+        if (thumbs[idNum]) {
+          setImgSrc(thumbs[idNum]);
+        }
+      });
+    } else if (item.imageUrl) {
+      setImgSrc(item.imageUrl);
+    }
+
     fetchAssetDetails(item.id).then((res) => setDetails(res));
-  }, [item.id]);
+  }, [item.id, item.imageUrl]);
 
   const handleCopyId = (e) => {
     e.stopPropagation();
@@ -35,23 +57,59 @@ export function ItemCard({
     e.stopPropagation();
     setIsDownloading(true);
     const cleanName = (item.name || `item_${item.id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
-    await downloadRobloxImage(imageUrl, `${cleanName}.png`);
+    await downloadRobloxImage(imgSrc, `${cleanName}.png`);
     setIsDownloading(false);
   };
 
+  const handleInspect = () => {
+    if (onCheckOwnership) {
+      onCheckOwnership({
+        id: item.id,
+        name: item.name,
+        category: item.assetType?.name || item.category || 'Accessory',
+        isOutfit: false,
+        imageUrl: imgSrc,
+      });
+    }
+  };
+
+  const handleImageError = () => {
+    // If direct URL failed, try proxied asset endpoint
+    if (!imgSrc.includes('/api/roblox-proxy')) {
+      const fallbackUrl = `/api/roblox-proxy?url=${encodeURIComponent(
+        `https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=420&height=420&format=png`
+      )}`;
+      setImgSrc(fallbackUrl);
+    } else {
+      // If even proxy failed (e.g. deleted/moderated asset), show graceful placeholder
+      setImgFailed(true);
+    }
+  };
+
   return (
-    <div className="group bg-[#12161f] border border-[#2d333b] hover:border-[#4b5563] rounded-xl p-3 flex flex-col items-center transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg relative min-w-0">
+    <div
+      onClick={handleInspect}
+      className="group bg-[#12161f] border border-[#2d333b] hover:border-[#4b5563] rounded-xl p-3 flex flex-col items-center transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg relative min-w-0 cursor-pointer"
+    >
       {/* Thumbnail Container */}
       <div className="w-full aspect-square rounded-lg bg-[#0a0d14] border border-[#21262d] flex items-center justify-center relative overflow-hidden mb-2.5">
-        <img
-          src={imageUrl}
-          alt={item.name}
-          className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-200"
-          loading="lazy"
-          onError={(e) => {
-            e.currentTarget.src = `https://www.roblox.com/asset-thumbnail/image?assetId=${item.id}&width=150&height=150&format=png`;
-          }}
-        />
+        {!imgFailed ? (
+          <img
+            src={imgSrc}
+            alt={item.name}
+            className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-200"
+            loading="lazy"
+            onError={handleImageError}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center p-2 text-center text-[#8b949e]">
+            <ShirtIcon className="w-8 h-8 text-sky-400/60 mb-1" />
+            <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+              {item.assetType?.name || item.category || 'Roblox Item'}
+            </span>
+            <span className="text-[9px] text-[#8b949e] font-mono">#{item.id}</span>
+          </div>
+        )}
 
         {/* Limited Badge */}
         {details?.isLimited && (
@@ -116,15 +174,10 @@ export function ItemCard({
       {/* Action Buttons */}
       <div className="w-full grid grid-cols-2 gap-1.5 mt-auto">
         <button
-          onClick={() =>
-            onCheckOwnership({
-              id: item.id,
-              name: item.name,
-              category: item.assetType?.name || item.category || 'Accessory',
-              isOutfit: false,
-              imageUrl,
-            })
-          }
+          onClick={(e) => {
+            e.stopPropagation();
+            handleInspect();
+          }}
           className="py-1 px-1.5 bg-[#1f2937] hover:bg-[#374151] border border-[#374151] text-[#f0f6fc] text-xs font-semibold rounded-md flex items-center justify-center gap-1 transition-all cursor-pointer truncate"
           title="Check which players wear or own this item"
         >
@@ -136,6 +189,7 @@ export function ItemCard({
           href={`https://www.roblox.com/catalog/${item.id}`}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
           className="py-1 px-1.5 bg-[#161b22] hover:bg-[#21262d] border border-[#30363d] text-sky-400 hover:text-white text-xs font-semibold rounded-md flex items-center justify-center gap-1 transition-all truncate"
           title="View on Roblox Catalog"
         >

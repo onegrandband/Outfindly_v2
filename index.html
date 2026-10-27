@@ -17,9 +17,9 @@
   <meta name="author" content="Outfindly" />
   <meta name="owner" content="Outfindly" />
   <meta name="designer" content="Outfindly" />
-  <meta name="reply-to" content="support@outfindly.com" />
-  <meta name="url" content="https://outfindly.com" />
-  <meta name="identifier-URL" content="https://outfindly.com" />
+  <meta name="reply-to" content="support@outfindly.app55.site" />
+  <meta name="url" content="https://outfindly.app55.site" />
+  <meta name="identifier-URL" content="https://outfindly.app55.site" />
   <meta name="category" content="Gaming / Web Tools" />
   <meta name="coverage" content="Worldwide" />
   <meta name="distribution" content="Global" />
@@ -36,7 +36,7 @@
   <meta name="yandex" content="index, follow" />
   <meta name="revisit-after" content="7 days" />
   <meta name="google" content="notranslate" />
-  <link rel="canonical" href="https://outfindly.com" />
+  <link rel="canonical" href="https://outfindly.app55.site" />
 
   <!-- 4. Geo-Targeting & Regional Localization -->
   <meta name="geo.region" content="US" />
@@ -62,9 +62,9 @@
   <meta property="og:title" content="Outfindly" />
   <meta property="og:description" content="Inspect and browse any Roblox player's custom avatar creations, saved outfits, catalog accessories, and avatar renders." />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://outfindly.com" />
-  <meta property="og:image" content="https://outfindly.com" />
-  <meta property="og:image:secure_url" content="https://outfindly.com" />
+  <meta property="og:url" content="https://outfindly.app55.site" />
+  <meta property="og:image" content="https://outfindly.app55.site/og-card.png" />
+  <meta property="og:image:secure_url" content="https://outfindly.app55.site/og-card.png" />
   <meta property="og:image:type" content="image/png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -82,16 +82,45 @@
   <meta name="twitter:creator" content="@outfindly" />
   <meta name="twitter:title" content="Outfindly" />
   <meta name="twitter:description" content="Find any created avatar by typing in a username :)" />
-  <meta name="twitter:image" content="https://outfindly.com" />
+  <meta name="twitter:image" content="https://outfindly.app55.site/og-card.png" />
   <meta name="twitter:image:alt" content="Outfindly v2.0 Dashboard" />
 
   <!-- 8. Hardened Content Security, Delivery & Performance -->
   <meta http-equiv="Strict-Transport-Security" content="max-age=63072000; includeSubDomains; preload" />
-  <meta http-equiv="X-Frame-Options" content="DENY" />
   <meta http-equiv="X-Content-Type-Options" content="nosniff" />
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
   <meta http-equiv="Permissions-Policy" content="geolocation=(), camera=(), microphone=(), payment=()" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://googleapis.com; font-src 'self' https://fonts.gstatic.com https://gstatic.com data:; img-src 'self' data: blob: https://outfindly.com https://*.rbxcdn.com https://*.roblox.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.roblox.com;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://googleapis.com; font-src 'self' https://fonts.gstatic.com https://gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: ws: wss:;" />
+  <script>
+    // GitHub Pages SPA route restoration: restores deep URLs (e.g. /save, /creator) from 404.html redirect
+    (function(l) {
+      if (l.search) {
+        var params = new URLSearchParams(l.search);
+        var p = params.get('p');
+        if (p) {
+          var q = params.get('q');
+          var targetPath = decodeURIComponent(p);
+          if (!targetPath.startsWith('/')) targetPath = '/' + targetPath;
+          var newUrl = targetPath + (q ? '?' + decodeURIComponent(q) : '') + l.hash;
+          window.history.replaceState(null, null, newUrl);
+        }
+      }
+    })(window.location);
+
+    // Gracefully ignore benign Vite dev-server WebSocket reconnect warnings in AI Studio iframe
+    window.addEventListener('error', function(event) {
+      if (event && event.message && (event.message.includes('WebSocket') || event.message.includes('vite') || event.message.includes('createWebSocket'))) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+      }
+    }, true);
+    window.addEventListener('unhandledrejection', function(event) {
+      if (event && event.reason && String(event.reason).includes('WebSocket')) {
+        event.stopImmediatePropagation();
+        event.preventDefault();
+      }
+    }, true);
+  </script>
 
   <!-- Preconnect & Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />

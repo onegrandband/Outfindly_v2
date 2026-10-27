@@ -17,7 +17,6 @@ export async function fetchRobloxJson(targetUrl, options = {}) {
     }
   }
 
-  const proxyUrl = `/api/roblox-proxy?url=${encodeURIComponent(targetUrl)}`;
   const isPost = options.method === 'POST';
   const headers = {
     Accept: 'application/json, text/plain, */*',
@@ -25,32 +24,72 @@ export async function fetchRobloxJson(targetUrl, options = {}) {
     ...options.headers,
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  // 1. Try local backend proxy first (AI Studio Node/Express dev environment)
+  const proxyEndpoints = [
+    `/api/roblox-proxy?url=${encodeURIComponent(targetUrl)}`,
+    // 2. Static hosting fallbacks (e.g. GitHub Pages on outfindly.app55.site)
+    `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+  ];
 
+  let lastError = null;
+
+  for (const endpoint of proxyEndpoints) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+    try {
+      const res = await fetch(endpoint, {
+        method: options.method || 'GET',
+        headers,
+        signal: controller.signal,
+        ...(options.body ? { body: options.body } : {}),
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const text = await res.text();
+      if (!text || text.trim().startsWith('<')) {
+        // Returned HTML (e.g. 404 page from static host), treat as failed proxy
+        throw new Error('Non-JSON response received');
+      }
+
+      const data = JSON.parse(text);
+      if (isGet) {
+        clientJsonCache.set(targetUrl, { timestamp: now, data });
+      }
+      return data;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastError = err;
+      // If error, continue to next fallback endpoint
+    }
+  }
+
+  // 3. Final attempt: direct fetch (if allowed by CORS policy)
   try {
-    const res = await fetch(proxyUrl, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const directRes = await fetch(targetUrl, {
       method: options.method || 'GET',
       headers,
       signal: controller.signal,
-      ...(options.body ? { body: options.body } : {}),
     });
-
     clearTimeout(timeoutId);
-
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+    if (directRes.ok) {
+      const directData = await directRes.json();
+      if (isGet) clientJsonCache.set(targetUrl, { timestamp: now, data: directData });
+      return directData;
     }
-
-    const data = await res.json();
-    if (isGet) {
-      clientJsonCache.set(targetUrl, { timestamp: now, data });
-    }
-    return data;
-  } catch (err) {
-    clearTimeout(timeoutId);
-    throw new Error(`Roblox API request failed: ${err.message || 'Network error'}`);
+  } catch {
+    // ignore
   }
+
+  throw new Error(`Roblox API request failed: ${lastError?.message || 'Network error'}`);
 }
 
 /**
@@ -60,21 +99,40 @@ export async function downloadRobloxImage(imageUrl, fileName = 'avatar.png') {
   if (!imageUrl) return;
 
   try {
-    const proxyUrl = `/api/roblox-proxy?url=${encodeURIComponent(imageUrl)}`;
-    const res = await fetch(proxyUrl);
-    if (!res.ok) throw new Error('Proxy fetch failed');
+    let blob = null;
+    // 1. Try local backend proxy
+    try {
+      const res = await fetch(`/api/roblox-proxy?url=${encodeURIComponent(imageUrl)}`);
+      if (res.ok) blob = await res.blob();
+    } catch {
+      // ignore
+    }
 
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    // 2. Try static CORS proxy fallback (GitHub Pages)
+    if (!blob) {
+      try {
+        const res = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(imageUrl)}`);
+        if (res.ok) blob = await res.blob();
+      } catch {
+        // ignore
+      }
+    }
+
+    if (blob) {
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      return;
+    }
+
+    throw new Error('All blob downloads failed');
   } catch (err) {
-    console.warn('Direct proxy blob download failed, falling back to direct anchor:', err);
+    console.warn('Blob download failed, falling back to direct anchor:', err);
     const link = document.createElement('a');
     link.href = imageUrl;
     link.download = fileName;
@@ -346,6 +404,45 @@ export async function fetchCurrentWearingAvatar(userId) {
     assets: data?.assets || [],
     imageUrl,
   };
+}
+
+// In-memory cache for asset thumbnails (direct CDN URLs)
+export const assetThumbnailCache = new Map();
+
+/**
+ * Batch fetches direct CDN thumbnails for Roblox assets (eliminates broken images).
+ */
+export async function fetchAssetThumbnails(assetIds = []) {
+  const ids = assetIds.map(Number).filter((id) => id && !isNaN(id));
+  if (ids.length === 0) return {};
+
+  const missing = ids.filter((id) => !assetThumbnailCache.has(id));
+  if (missing.length > 0) {
+    for (let i = 0; i < missing.length; i += 50) {
+      const chunk = missing.slice(i, i + 50);
+      try {
+        const url = `https://thumbnails.roblox.com/v1/assets?assetIds=${chunk.join(',')}&size=420x420&format=Png&isCircular=false`;
+        const res = await fetchRobloxJson(url);
+        if (res?.data) {
+          for (const item of res.data) {
+            if (item.targetId && item.imageUrl) {
+              assetThumbnailCache.set(Number(item.targetId), item.imageUrl);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error fetching asset thumbnails chunk:', err);
+      }
+    }
+  }
+
+  const result = {};
+  for (const id of ids) {
+    result[id] =
+      assetThumbnailCache.get(id) ||
+      `https://www.roblox.com/asset-thumbnail/image?assetId=${id}&width=420&height=420&format=png`;
+  }
+  return result;
 }
 
 // In-memory cache for asset metadata (price, year, limited status)

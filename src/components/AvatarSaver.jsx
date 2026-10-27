@@ -155,19 +155,27 @@ export function AvatarSaver() {
     }
     setIsSyncing(true);
     try {
-      for (const item of avatars) {
-        if (!item.syncedToCloud) {
-          try {
-            await syncItemToFirestore(item, user.uid);
-            item.syncedToCloud = true;
-          } catch (e) {
-            console.warn(e);
+      if (user.isCodeAccount) {
+        const { pushSavedAssetToCloud } = await import('../services/accountSync.js');
+        for (const item of avatars) {
+          await pushSavedAssetToCloud(item);
+        }
+        setSyncMessage(`Synced ${avatars.length} items to account ${user.code}!`);
+      } else {
+        for (const item of avatars) {
+          if (!item.syncedToCloud) {
+            try {
+              await syncItemToFirestore(item, user.uid);
+              item.syncedToCloud = true;
+            } catch (e) {
+              console.warn(e);
+            }
           }
         }
+        const refreshed = await syncFromFirestore(user.uid);
+        setAvatars(refreshed);
+        setSyncMessage('All avatars synced across devices!');
       }
-      const refreshed = await syncFromFirestore(user.uid);
-      setAvatars(refreshed);
-      setSyncMessage('All avatars synced across devices!');
       setTimeout(() => setSyncMessage(null), 3000);
     } catch (err) {
       console.error(err);

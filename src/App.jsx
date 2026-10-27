@@ -14,6 +14,7 @@ import { ItemCard } from './components/ItemCard.jsx';
 import { OutfitModal } from './components/OutfitModal.jsx';
 import { CurrentAvatarModal } from './components/CurrentAvatarModal.jsx';
 import { ItemOwnershipModal } from './components/ItemOwnershipModal.jsx';
+import { ExactDateModal } from './components/ExactDateModal.jsx';
 import { AvatarMaker } from './components/AvatarMaker.jsx';
 import { AvatarSaver } from './components/AvatarSaver.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
@@ -22,8 +23,14 @@ import {
   fetchUserOutfits,
   fetchCurrentWearingAvatar,
   fetchOutfitDetails,
+  fetchAssetDetails,
+  fetchAssetThumbnails,
   downloadRobloxImage,
 } from './services/roblox.js';
+import {
+  pushSearchHistoryToCloud,
+  getActiveCodeAccount,
+} from './services/accountSync.js';
 import {
   AlertIcon,
   FolderIcon,
@@ -33,6 +40,7 @@ import {
   ShirtIcon,
   DownloadIcon,
   UsersIcon,
+  SparklesIcon,
 } from './components/Icons.jsx';
 
 function OutfitsExplorerView({
@@ -41,6 +49,7 @@ function OutfitsExplorerView({
   currentUser,
   outfits,
   playerItems,
+  totalAvatarPrice,
   isLoading,
   loadingStep,
   error,
@@ -55,9 +64,17 @@ function OutfitsExplorerView({
   onClearRecent,
   onInspectCurrentAvatar,
   onCheckOwnership,
+  onTriggerExactDate,
 }) {
   const [selectedOutfit, setSelectedOutfit] = useState(null);
   const [isDownloadingLook, setIsDownloadingLook] = useState(false);
+
+  // Check if search term is "Exact Date" easter egg
+  useEffect(() => {
+    if (searchTerm.trim().toLowerCase() === 'exact date') {
+      onTriggerExactDate();
+    }
+  }, [searchTerm, onTriggerExactDate]);
 
   // Filtered Outfits
   const filteredOutfits = useMemo(() => {
@@ -67,7 +84,7 @@ function OutfitsExplorerView({
         if (filterMode === 'custom' && !outfit.isEditable) {
           return false;
         }
-        if (searchTerm.trim()) {
+        if (searchTerm.trim() && searchTerm.trim().toLowerCase() !== 'exact date') {
           const match = outfit.name
             ?.toLowerCase()
             .includes(searchTerm.toLowerCase().trim());
@@ -87,7 +104,7 @@ function OutfitsExplorerView({
     if (filterMode === 'custom') return []; // In player outfits mode, only show outfits!
     return playerItems
       .filter((item) => {
-        if (searchTerm.trim()) {
+        if (searchTerm.trim() && searchTerm.trim().toLowerCase() !== 'exact date') {
           const q = searchTerm.toLowerCase().trim();
           const matchName = item.name?.toLowerCase().includes(q);
           const matchType = item.assetType?.name?.toLowerCase().includes(q);
@@ -159,6 +176,7 @@ function OutfitsExplorerView({
           user={currentUser}
           totalOutfits={outfits.length}
           customOutfitsCount={customOutfitsCount}
+          totalAvatarPrice={totalAvatarPrice}
           onInspectCurrentAvatar={onInspectCurrentAvatar}
         />
       )}
@@ -401,6 +419,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [outfits, setOutfits] = useState([]);
   const [playerItems, setPlayerItems] = useState([]);
+  const [totalAvatarPrice, setTotalAvatarPrice] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState('');
   const [error, setError] = useState(null);
@@ -415,6 +434,7 @@ export default function App() {
   // Modals
   const [isInspectingCurrentAvatar, setIsInspectingCurrentAvatar] = useState(false);
   const [ownershipModalItem, setOwnershipModalItem] = useState(null);
+  const [isExactDateModalOpen, setIsExactDateModalOpen] = useState(false);
 
   // Recent Searches
   const [recentSearches, setRecentSearches] = useState(() => {
@@ -426,6 +446,18 @@ export default function App() {
     }
   });
 
+  // Global Shift+D listener for Secret Exact Join Date easter egg
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        // Prevent typing capital D if not focused on text input or show modal
+        setIsExactDateModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const saveRecentSearch = (userQuery) => {
     setRecentSearches((prev) => {
       const filtered = prev.filter((s) => s.toLowerCase() !== userQuery.toLowerCase());
@@ -435,6 +467,8 @@ export default function App() {
       } catch {
         // ignore
       }
+      // Push to cloud account if logged in
+      pushSearchHistoryToCloud(updated).catch(() => {});
       return updated;
     });
   };
@@ -446,6 +480,7 @@ export default function App() {
     } catch {
       // ignore
     }
+    pushSearchHistoryToCloud([]).catch(() => {});
   };
 
   const handleSearch = async (targetQuery) => {
@@ -461,6 +496,7 @@ export default function App() {
     setCurrentUser(null);
     setOutfits([]);
     setPlayerItems([]);
+    setTotalAvatarPrice(null);
 
     try {
       const user = await searchRobloxUser(q);
@@ -492,7 +528,33 @@ export default function App() {
             source: 'active',
           });
         }
+
+        // Calculate total Robux price of active character
+        Promise.all(
+          activeAvatar.assets.map((a) => fetchAssetDetails(a.id).catch(() => null))
+        ).then((detailsList) => {
+          if (activeRequestIdRef.current !== requestId) return;
+          const total = detailsList.reduce((sum, d) => {
+            return d && typeof d.price === 'number' ? sum + d.price : sum;
+          }, 0);
+          setTotalAvatarPrice(total);
+        });
       }
+
+      // Initial list of items
+      const initialItems = Array.from(itemsMap.values());
+      setPlayerItems(initialItems);
+
+      // Batch pre-fetch direct CDN thumbnails for these items so they never break
+      fetchAssetThumbnails(Array.from(itemsMap.keys())).then((thumbs) => {
+        if (activeRequestIdRef.current !== requestId) return;
+        setPlayerItems((prev) =>
+          prev.map((item) => ({
+            ...item,
+            imageUrl: thumbs[item.id] || item.imageUrl,
+          }))
+        );
+      });
 
       // 2. Fetch items from the first few outfits to populate their wardrobe items
       const outfitSamples = userOutfits.slice(0, 6);
@@ -504,6 +566,7 @@ export default function App() {
         )
       ).then((outfitAssetsList) => {
         if (activeRequestIdRef.current !== requestId) return;
+        const allAssetIds = [];
         outfitAssetsList.flat().forEach((a) => {
           if (!itemsMap.has(String(a.id))) {
             itemsMap.set(String(a.id), {
@@ -513,12 +576,26 @@ export default function App() {
               category: a.assetType?.name || 'Accessories',
               source: 'outfit',
             });
+            allAssetIds.push(a.id);
           }
         });
-        setPlayerItems(Array.from(itemsMap.values()));
-      });
 
-      setPlayerItems(Array.from(itemsMap.values()));
+        const updatedItems = Array.from(itemsMap.values());
+        setPlayerItems(updatedItems);
+
+        // Batch pre-fetch thumbnails for new outfit assets
+        if (allAssetIds.length > 0) {
+          fetchAssetThumbnails(allAssetIds).then((thumbs) => {
+            if (activeRequestIdRef.current !== requestId) return;
+            setPlayerItems((prev) =>
+              prev.map((item) => ({
+                ...item,
+                imageUrl: thumbs[item.id] || item.imageUrl,
+              }))
+            );
+          });
+        }
+      });
 
       // If player has 0 custom outfits, switch to 'all' so outfits/items still show
       const hasCustom = userOutfits.some((o) => o.isEditable);
@@ -549,7 +626,7 @@ export default function App() {
   return (
     <AuthProvider>
       <div className="min-h-screen flex flex-col bg-[#0b0f17] text-[#f0f6fc]">
-        {/* Header (Random Player and Avatar Maker removed from navigation) */}
+        {/* Header */}
         <Header />
 
         {/* Routes */}
@@ -563,6 +640,7 @@ export default function App() {
                 currentUser={currentUser}
                 outfits={outfits}
                 playerItems={playerItems}
+                totalAvatarPrice={totalAvatarPrice}
                 isLoading={isLoading}
                 loadingStep={loadingStep}
                 error={error}
@@ -577,6 +655,7 @@ export default function App() {
                 onClearRecent={handleClearRecent}
                 onInspectCurrentAvatar={() => setIsInspectingCurrentAvatar(true)}
                 onCheckOwnership={(item) => setOwnershipModalItem(item)}
+                onTriggerExactDate={() => setIsExactDateModalOpen(true)}
               />
             }
           />
@@ -618,6 +697,13 @@ export default function App() {
           }}
         />
 
+        {/* Exact Join Date & Time Easter Egg Modal (Shift+D or "Exact Date") */}
+        <ExactDateModal
+          isOpen={isExactDateModalOpen}
+          onClose={() => setIsExactDateModalOpen(false)}
+          currentUser={currentUser}
+        />
+
         {/* Footer */}
         <footer className="w-full border-t border-[#21262d] py-5 px-4 text-center text-xs text-[#8b949e] mt-auto">
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -625,6 +711,14 @@ export default function App() {
               Roblox Outfits & Avatar Saver • Human-crafted avatar & item explorer
             </p>
             <div className="flex items-center gap-4 text-xs">
+              <button
+                onClick={() => setIsExactDateModalOpen(true)}
+                className="hover:text-amber-400 text-sky-400 font-mono text-[11px] transition-colors cursor-pointer"
+                title="Secret Easter Egg: Shift+D or search 'Exact Date'"
+              >
+                Easter Egg [Shift+D]
+              </button>
+              <span>•</span>
               <a
                 href="https://www.roblox.com"
                 target="_blank"

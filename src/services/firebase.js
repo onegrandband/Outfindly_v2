@@ -82,6 +82,7 @@ export {
   collection,
   doc,
   setDoc,
+  getDocFromServer,
   getDocs,
   deleteDoc,
   serverTimestamp,

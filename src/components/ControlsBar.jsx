@@ -78,9 +78,11 @@ export function ControlsBar({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder={
-              filterMode === 'clothes'
+              filterMode === 'all'
+                ? 'Search all items...'
+                : filterMode === 'clothes'
                 ? 'Search clothes, hats & items...'
-                : 'Search outfits by name...'
+                : 'Search player outfits...'
             }
             className="w-full pl-8 pr-3 py-1.5 bg-[#090d13] border border-[#2d333b] rounded-lg text-xs text-[#f0f6fc] focus:outline-none focus:border-sky-500 transition-all placeholder:text-[#6e7681]"
           />
