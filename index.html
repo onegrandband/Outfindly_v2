@@ -92,21 +92,6 @@
   <meta http-equiv="Permissions-Policy" content="geolocation=(), camera=(), microphone=(), payment=()" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://googleapis.com; font-src 'self' https://fonts.gstatic.com https://gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: ws: wss:;" />
   <script>
-    // GitHub Pages SPA route restoration: restores deep URLs (e.g. /save, /creator) from 404.html redirect
-    (function(l) {
-      if (l.search) {
-        var params = new URLSearchParams(l.search);
-        var p = params.get('p');
-        if (p) {
-          var q = params.get('q');
-          var targetPath = decodeURIComponent(p);
-          if (!targetPath.startsWith('/')) targetPath = '/' + targetPath;
-          var newUrl = targetPath + (q ? '?' + decodeURIComponent(q) : '') + l.hash;
-          window.history.replaceState(null, null, newUrl);
-        }
-      }
-    })(window.location);
-
     // Gracefully ignore benign Vite dev-server WebSocket reconnect warnings in AI Studio iframe
     window.addEventListener('error', function(event) {
       if (event && event.message && (event.message.includes('WebSocket') || event.message.includes('vite') || event.message.includes('createWebSocket'))) {
